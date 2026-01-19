@@ -1,7 +1,8 @@
 fastapi
 uvicorn
-deepfilternet
 torch
 torchaudio
+deepfilternet
+pydub
 soundfile
 python-multipart
