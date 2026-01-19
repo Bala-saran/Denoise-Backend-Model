@@ -1,0 +1,12 @@
+venv/
+__pycache__/
+
+uploads/
+tmp/
+outputs/
+
+*.wav
+*.mp3
+*.mp4
+
+.env
