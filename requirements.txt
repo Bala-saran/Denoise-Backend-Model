@@ -1,7 +1,10 @@
-fastapi
-uvicorn
-python-multipart
-torch
-torchaudio
-deepfilternet
+--extra-index-url https://download.pytorch.org/whl/cpu
+
+fastapi==0.110.0
+uvicorn==0.29.0
+torch==2.1.2+cpu
+torchaudio==2.1.2+cpu
+deepfilternet==0.5.6
 soundfile
+numpy
+python-multipart
