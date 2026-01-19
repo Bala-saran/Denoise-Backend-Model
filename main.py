@@ -1,6 +1,6 @@
-from fastapi import FastAPI, UploadFile, File
-from fastapi.responses import FileResponse, JSONResponse
-import uuid, os, subprocess
+from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi.responses import FileResponse
+import subprocess, uuid, os, shutil
 
 app = FastAPI(title="Noise Removal API")
 
@@ -11,41 +11,64 @@ TMP_DIR = "tmp"
 for d in [UPLOAD_DIR, OUTPUT_DIR, TMP_DIR]:
     os.makedirs(d, exist_ok=True)
 
-@app.get("/")
+
+@app.get("/health")
 def health():
     return {"status": "ok"}
 
+
 @app.post("/clean")
 async def clean_audio(file: UploadFile = File(...)):
+    # 1️⃣ MP3 check
+    if not file.filename.lower().endswith(".mp3"):
+        raise HTTPException(status_code=400, detail="Only MP3 files are supported")
+
     uid = str(uuid.uuid4())
-    input_path = f"{UPLOAD_DIR}/{uid}_{file.filename}"
-    clean_wav = f"{TMP_DIR}/{uid}_clean.wav"
-    output_mp3 = f"{OUTPUT_DIR}/{uid}_clean.mp3"
 
-    with open(input_path, "wb") as f:
-        f.write(await file.read())
+    mp3_path = f"{UPLOAD_DIR}/{uid}.mp3"
+    wav_path = f"{TMP_DIR}/{uid}.wav"
+    out_dir = f"{OUTPUT_DIR}/{uid}"
 
-    # Convert any format → wav
-    subprocess.run([
-        "ffmpeg", "-y", "-i", input_path,
-        "-ar", "16000", "-ac", "1",
-        clean_wav
-    ], check=True)
+    os.makedirs(out_dir, exist_ok=True)
 
-    # DeepFilter
-    subprocess.run([
-        "deepfilter", clean_wav, "-o", TMP_DIR
-    ], check=True)
+    # 2️⃣ Save uploaded MP3
+    with open(mp3_path, "wb") as f:
+        shutil.copyfileobj(file.file, f)
 
-    df_out = clean_wav.replace(".wav", "_DeepFilterNet3.wav")
+    try:
+        # 3️⃣ MP3 → WAV (16k mono)
+        subprocess.run([
+            "ffmpeg", "-y",
+            "-i", mp3_path,
+            "-ar", "16000",
+            "-ac", "1",
+            wav_path
+        ], check=True)
 
-    # Convert to mp3
-    subprocess.run([
-        "ffmpeg", "-y", "-i", df_out, output_mp3
-    ], check=True)
+        # 4️⃣ DeepFilterNet
+        subprocess.run([
+            "deepfilter",
+            wav_path,
+            "-o", out_dir
+        ], check=True)
 
-    return FileResponse(
-        output_mp3,
-        media_type="audio/mpeg",
-        filename="cleaned.mp3"
-    )
+        out_file = os.path.join(out_dir, f"{uid}_DeepFilterNet3.wav")
+
+        if not os.path.exists(out_file):
+            raise RuntimeError("Output not generated")
+
+        # 5️⃣ Return file
+        return FileResponse(
+            out_file,
+            media_type="audio/wav",
+            filename="clean_audio.wav"
+        )
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    finally:
+        # 6️⃣ Cleanup
+        for p in [mp3_path, wav_path]:
+            if os.path.exists(p):
+                os.remove(p)
